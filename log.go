@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path"
 	"runtime"
-	"strings"
 	"time"
 )
 
+//日志等级
 const (
 	TRASH = iota
 	FATAL_N
@@ -19,105 +20,132 @@ const (
 )
 
 const (
-	DEBUG = "DEBUG"
-	INFO  = "INFO"
-	WARN  = "WARN"
-	ERROR = "ERROR"
-	FATAL = "FATAL"
+	sDEBUG = "DEBUG"
+	sINFO  = "INFO"
+	sWARN  = "WARN"
+	sERROR = "ERROR"
+	sFATAL = "FATAL"
 )
 
 var (
-	LOG_LEVEL = DEBUG_N
+	logLevel = DEBUG_N
 
-	LevelText = map[int]string{DEBUG_N: DEBUG, INFO_N: INFO, WARN_N: WARN, ERROR_N: ERROR, FATAL_N: FATAL}
+	levelText = map[int]string{DEBUG_N: sDEBUG, INFO_N: sINFO, WARN_N: sWARN, ERROR_N: sERROR, FATAL_N: sFATAL}
 
 	fileOutput *os.File
 	fileBuffer *bufio.Writer
-	chOutput   = make(chan string, 10000)
+	chOutput   = make(chan string, 1000)
 )
 
-func SetFile(file *os.File) {
-	fileOutput = file
-	fileBuffer = bufio.NewWriter(file)
-
+func SetFile(fileName string) bool {
+	os.MkdirAll(path.Dir(fileName), os.ModeDir)
+	fileOutput, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	fileBuffer = bufio.NewWriter(fileOutput)
+	return true
 }
 
-func Start() {
+func SetLevel(level int) bool {
+	if level <= TRASH || level > DEBUG_N {
+		return false
+	}
+
+	logLevel = level
+	return true
+}
+
+func init() {
 	go func(chOutput chan string) {
-		go func() {
-			for {
-				time.Sleep(time.Second * 2)
-				if fileOutput != nil {
+		var output string
+		write := os.Stdout.WriteString
+		for {
+			select {
+			case output = <-chOutput:
+				write(output)
+				if fileBuffer != nil {
+					fileBuffer.WriteString(output)
+				}
+			case <-time.After(time.Millisecond * 200):
+				if fileBuffer != nil {
 					fileBuffer.Flush()
 					fileOutput.Sync()
 				}
-			}
-		}()
-
-		var output string
-		for {
-			output = <-chOutput
-			os.Stdout.WriteString(output)
-			if fileOutput != nil {
-				fileBuffer.WriteString(output)
 			}
 		}
 	}(chOutput)
 }
 
-func Close() {
-	if fileOutput != nil {
-		fileBuffer.Flush()
-		fileOutput.Sync()
-	}
-}
-
-func Time() string {
+func timeFmt() string {
 	return time.Now().Format("2006-01-02 15:04:05")
 }
 
-func FileLine() string {
-	var f string
-
-	_, file, line, ok := runtime.Caller(3)
-	if ok == true {
-		files := strings.Split(file, "/src/")
-		if len(files) >= 2 {
-			f = files[len(files)-1]
-		} else {
-			f = file
+func fileLine() string {
+	_, file, line, _ := runtime.Caller(3)
+	i, count := len(file)-4, 0
+	for ; i > 0; i-- {
+		if file[i] == '/' {
+			count++
+			if count == 2 {
+				break
+			}
 		}
-
-		f = fmt.Sprintf("[%s(%v)]", f, line)
 	}
-
-	return f
+	return fmt.Sprintf("%s:%d", file[i+1:], line)
 }
 
-func writeBuffer(level int, format string, data ...interface{}) {
-	if LOG_LEVEL < level {
+func writeBufferf(level int, format string, data ...interface{}) {
+	if logLevel < level {
 		return
 	}
-	levelText := LevelText[level]
-	chOutput <- fmt.Sprintf("%s %s %s %s\n", Time(), levelText, FileLine(), fmt.Sprintf(format, data...))
+	chOutput <- fmt.Sprintf("%s %s [%s] - %s\n", timeFmt(), levelText[level], fileLine(), fmt.Sprintf(format, data...))
 }
 
-func Debug(format string, data ...interface{}) {
-	writeBuffer(DEBUG_N, format, data...)
+func writeBuffer(level int, data ...interface{}) {
+	if logLevel < level {
+		return
+	}
+	chOutput <- fmt.Sprintf("%s %s [%s] - %s\n", timeFmt(), levelText[level], fileLine(), fmt.Sprint(data...))
 }
 
-func Info(format string, data ...interface{}) {
-	writeBuffer(INFO_N, format, data...)
+func Debug(data ...interface{}) {
+	writeBuffer(DEBUG_N, data...)
 }
 
-func Warn(format string, data ...interface{}) {
-	writeBuffer(WARN_N, format, data...)
+func Debugf(format string, data ...interface{}) {
+	writeBufferf(DEBUG_N, format, data...)
 }
 
-func Error(format string, data ...interface{}) {
-	writeBuffer(ERROR_N, format, data...)
+func Info(data ...interface{}) {
+	writeBuffer(INFO_N, data...)
 }
 
-func Fatal(format string, data ...interface{}) {
-	writeBuffer(FATAL_N, format, data...)
+func Infof(format string, data ...interface{}) {
+	writeBufferf(INFO_N, format, data...)
+}
+
+func Warn(data ...interface{}) {
+	writeBuffer(WARN_N, data...)
+}
+
+func Warnf(format string, data ...interface{}) {
+	writeBufferf(WARN_N, format, data...)
+}
+
+func Error(data ...interface{}) {
+	writeBuffer(ERROR_N, data...)
+}
+
+func Errorf(format string, data ...interface{}) {
+	writeBufferf(ERROR_N, format, data...)
+}
+
+func Fatal(data ...interface{}) {
+	writeBuffer(FATAL_N, data...)
+}
+
+func Fatalf(format string, data ...interface{}) {
+	writeBufferf(FATAL_N, format, data...)
 }
