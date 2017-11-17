@@ -25,6 +25,8 @@ const (
 	sWARN  = "WARN"
 	sERROR = "ERROR"
 	sFATAL = "FATAL"
+
+	defaultBufSize = 1024 * 1024
 )
 
 var (
@@ -44,7 +46,7 @@ func SetFile(fileName string) bool {
 		fmt.Println(err)
 		return false
 	}
-	fileBuffer = bufio.NewWriter(fileOutput)
+	fileBuffer = bufio.NewWriterSize(fileOutput, defaultBufSize)
 	return true
 }
 
@@ -58,7 +60,7 @@ func SetLevel(level int) bool {
 }
 
 func init() {
-	go func(chOutput chan string) {
+	go func() {
 		var output string
 		write := os.Stdout.WriteString
 		for {
@@ -68,14 +70,14 @@ func init() {
 				if fileBuffer != nil {
 					fileBuffer.WriteString(output)
 				}
-			case <-time.After(time.Millisecond * 200):
+			case <-time.After(time.Millisecond * 100):
 				if fileBuffer != nil {
 					fileBuffer.Flush()
 					fileOutput.Sync()
 				}
 			}
 		}
-	}(chOutput)
+	}()
 }
 
 func timeFmt() string {
