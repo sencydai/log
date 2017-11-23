@@ -9,14 +9,16 @@ import (
 	"time"
 )
 
+type LogLevel = int
+
 //日志等级
 const (
-	TRASH = iota
-	FATAL_N
-	ERROR_N
-	WARN_N
+	DEBUG_N LogLevel = iota
 	INFO_N
-	DEBUG_N
+	WARN_N
+	ERROR_N
+	FATAL_N
+	TRASH
 )
 
 const (
@@ -50,13 +52,27 @@ func SetFile(fileName string) bool {
 	return true
 }
 
-func SetLevel(level int) bool {
-	if level <= TRASH || level > DEBUG_N {
+func SetLevel(level LogLevel) bool {
+	if level < DEBUG_N || level >= TRASH {
 		return false
 	}
 
 	logLevel = level
 	return true
+}
+
+func Close() {
+	for {
+		if len(chOutput) == 0 {
+			time.Sleep(time.Millisecond * 5)
+			break
+		}
+		time.Sleep(time.Millisecond * 10)
+	}
+	if fileBuffer != nil {
+		fileBuffer.Flush()
+		fileOutput.Sync()
+	}
 }
 
 func init() {
@@ -84,8 +100,8 @@ func timeFmt() string {
 	return time.Now().Format("2006-01-02 15:04:05")
 }
 
-func fileLine() string {
-	_, file, line, _ := runtime.Caller(3)
+func fileLine(skip int) string {
+	_, file, line, _ := runtime.Caller(skip)
 	i, count := len(file)-4, 0
 	for ; i > 0; i-- {
 		if file[i] == '/' {
@@ -98,56 +114,56 @@ func fileLine() string {
 	return fmt.Sprintf("%s:%d", file[i+1:], line)
 }
 
-func writeBufferf(level int, format string, data ...interface{}) {
-	if logLevel < level {
+func writeBufferf(level LogLevel, skip int, format string, data ...interface{}) {
+	if level < logLevel {
 		return
 	}
-	chOutput <- fmt.Sprintf("%s %s [%s] - %s\n", timeFmt(), levelText[level], fileLine(), fmt.Sprintf(format, data...))
+	chOutput <- fmt.Sprintf("%s %s [%s] - %s\n", timeFmt(), levelText[level], fileLine(skip), fmt.Sprintf(format, data...))
 }
 
-func writeBuffer(level int, data ...interface{}) {
-	if logLevel < level {
+func writeBuffer(level LogLevel, skip int, data ...interface{}) {
+	if level < logLevel {
 		return
 	}
-	chOutput <- fmt.Sprintf("%s %s [%s] - %s\n", timeFmt(), levelText[level], fileLine(), fmt.Sprint(data...))
+	chOutput <- fmt.Sprintf("%s %s [%s] - %s\n", timeFmt(), levelText[level], fileLine(skip), fmt.Sprint(data...))
 }
 
 func Debug(data ...interface{}) {
-	writeBuffer(DEBUG_N, data...)
+	writeBuffer(DEBUG_N, 3, data...)
 }
 
 func Debugf(format string, data ...interface{}) {
-	writeBufferf(DEBUG_N, format, data...)
+	writeBufferf(DEBUG_N, 3, format, data...)
 }
 
 func Info(data ...interface{}) {
-	writeBuffer(INFO_N, data...)
+	writeBuffer(INFO_N, 3, data...)
 }
 
 func Infof(format string, data ...interface{}) {
-	writeBufferf(INFO_N, format, data...)
+	writeBufferf(INFO_N, 3, format, data...)
 }
 
 func Warn(data ...interface{}) {
-	writeBuffer(WARN_N, data...)
+	writeBuffer(WARN_N, 3, data...)
 }
 
 func Warnf(format string, data ...interface{}) {
-	writeBufferf(WARN_N, format, data...)
+	writeBufferf(WARN_N, 3, format, data...)
 }
 
 func Error(data ...interface{}) {
-	writeBuffer(ERROR_N, data...)
+	writeBuffer(ERROR_N, 3, data...)
 }
 
 func Errorf(format string, data ...interface{}) {
-	writeBufferf(ERROR_N, format, data...)
+	writeBufferf(ERROR_N, 3, format, data...)
 }
 
 func Fatal(data ...interface{}) {
-	writeBuffer(FATAL_N, data...)
+	writeBuffer(FATAL_N, 3, data...)
 }
 
 func Fatalf(format string, data ...interface{}) {
-	writeBufferf(FATAL_N, format, data...)
+	writeBufferf(FATAL_N, 3, format, data...)
 }
